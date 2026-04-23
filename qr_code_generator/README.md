@@ -18,6 +18,8 @@
 
 ## Guided Track Setup
 
+**Prerequisite:** Python 3.10 or higher
+
 ```bash
 cd scaffold
 python3 -m venv .venv

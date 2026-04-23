@@ -23,7 +23,10 @@ BASE_URL = "http://localhost:8000"
 
 @router.post("/api/qr/create", response_model=CreateResponse)
 def create_qr(req: CreateRequest, db: Session = Depends(get_db)):
-    normalized_url = validate_url(req.url)
+    try:                                                                                                                                                           
+        normalized_url = validate_url(req.url)                
+    except ValueError as e:                                                                                                                                        
+        raise HTTPException(status_code=422, detail=str(e))
     token = generate_token(normalized_url, db)
 
     mapping = UrlMapping(
@@ -75,12 +78,17 @@ def update_qr(token: str, req: UpdateRequest, db: Session = Depends(get_db)):
     mapping = _get_mapping_or_404(token, db)
 
     if req.url is not None:
-        mapping.original_url = validate_url(req.url)
+        try:
+            mapping.original_url = validate_url(req.url)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
         # Invalidate cache
         redirect_cache.pop(token, None)
 
     if req.expires_at is not None:
         mapping.expires_at = req.expires_at
+        # Invalidate cache
+        redirect_cache.pop(token, None)
 
     db.commit()
     db.refresh(mapping)
