@@ -124,8 +124,60 @@ uvicorn app.main:app --reload
 ## Phase 4(選做):Bonus
 
 - [ ] 簡單前端(HTML form 輸入 URL → 顯示 QR 圖)
-- [ ] Rate limiting(`slowapi` 套 `/api/qr/create`)
-- [ ] 過期自動回 410(Phase 1 Step 3 已涵蓋,可加背景清理)
+- [V] **Add rate limiting to the create endpoint**(細節見下方 Step R)
+- [V] 過期自動回 410(Phase 1 Step 3 已涵蓋;cache 改存 `(url, expires_at)`,redirect cache hit 時 inline 檢查過期,過期就 pop + fall through to DB → 410)
+- [V] Admin cache invalidation:`POST /admin/cache/invalidate/{token}` 與 `POST /admin/cache/clear`,搭配手動改 DB 的偵錯場景
+
+---
+
+### Step R — `/api/qr/create` Rate Limiting
+
+**任務:** 防止濫用建立短網址,同 IP 短時間內超過上限即回 429。
+
+**選型:** `slowapi`(FastAPI 生態最常見,基於 `limits` 函式庫,語法接近 Flask-Limiter)。
+
+**策略:**
+- key:`get_remote_address`(以 client IP 當 key)
+- 上限:`10/minute` 套在 `/api/qr/create`(可調)
+- 超過 → 自動回 `429 Too Many Requests`,訊息走 slowapi 預設 handler
+
+**實作步驟:**
+
+1. **加入套件**
+   - [ ] `scaffold/requirements.txt` 加 `slowapi==0.1.9`
+   - [ ] `pip install -r requirements.txt`
+
+2. **建立 Limiter(`app/main.py`)**
+   - [ ] `from slowapi import Limiter, _rate_limit_exceeded_handler`
+   - [ ] `from slowapi.util import get_remote_address`
+   - [ ] `from slowapi.errors import RateLimitExceeded`
+   - [ ] `limiter = Limiter(key_func=get_remote_address)`
+   - [ ] `app.state.limiter = limiter`
+   - [ ] `app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)`
+
+3. **掛上 endpoint(`app/routes.py`)**
+   - [ ] `from slowapi import Limiter` + `from slowapi.util import get_remote_address`
+   - [ ] 引入共用 limiter(避免多個 instance):從 `app.main` import,或在 `routes.py` 建獨立 module-level limiter,於 `main.py` 用同一個
+     - 推薦寫法:在 `app/limiter.py` 集中建立 `limiter = Limiter(key_func=get_remote_address)`,`main.py` 與 `routes.py` 都從這裡 import
+   - [ ] `create_qr` 函式簽名加 `request: Request`(slowapi 需要)
+   - [ ] 在 `create_qr` 上方加 `@limiter.limit("10/minute")`
+
+4. **curl 驗證**
+   - [ ] 同 IP 連發 11 次 `POST /api/qr/create`,第 11 次預期 `429`
+   ```bash
+   for i in $(seq 1 11); do
+     curl -s -o /dev/null -w "%{http_code}\n" \
+       -X POST http://localhost:8000/api/qr/create \
+       -H 'Content-Type: application/json' \
+       -d '{"url":"https://example.com/'$i'"}'
+   done
+   ```
+   - [ ] 預期輸出:前 10 個 `200`,第 11 個 `429`
+
+**注意事項:**
+- `slowapi` 依賴 `request: Request` 參數能被 FastAPI 注入,**不要漏掉這個參數**,否則 limiter 會找不到 request 物件而 raise。
+- 目前是 in-memory 計數,server 重啟即歸零;production 要改成 Redis backend(`Limiter(storage_uri="redis://...")`)。
+- 若之後加上前端 / proxy(如 Nginx),需改用 `X-Forwarded-For`,可換成自寫 `key_func`。
 
 ---
 
@@ -136,5 +188,5 @@ uvicorn app.main:app --reload
 - [V] Phase 1 Step 2:`generate_token`
 - [V] Phase 1 Step 3:`redirect`
 - [V] Phase 2:curl 全綠
-- [ ] Phase 3:Design Questions
+- [V] Phase 3:Design Questions
 - [ ] Phase 4:Bonus(選做)

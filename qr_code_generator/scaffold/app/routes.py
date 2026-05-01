@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .database import get_db
+from .limiter import limiter
 from .models import ScanEvent, UrlMapping
 from .schemas import CreateRequest, CreateResponse, QRInfoResponse, UpdateRequest
 from .token_gen import generate_token
@@ -16,23 +17,24 @@ from .url_validator import validate_url
 router = APIRouter()
 
 # In-memory cache (simulates Redis for prototype)
-redirect_cache: dict[str, str] = {}
+redirect_cache: dict[str, tuple[str, datetime | None]] = {}
 
 BASE_URL = "http://localhost:8000"
 
 
 @router.post("/api/qr/create", response_model=CreateResponse)
-def create_qr(req: CreateRequest, db: Session = Depends(get_db)):
-    try:                                                                                                                                                           
-        normalized_url = validate_url(req.url)                
-    except ValueError as e:                                                                                                                                        
+@limiter.limit("10/minute")
+def create_qr(request: Request, payload: CreateRequest, db: Session = Depends(get_db)):
+    try:
+        normalized_url = validate_url(payload.url)
+    except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     token = generate_token(normalized_url, db)
 
     mapping = UrlMapping(
         token=token,
         original_url=normalized_url,
-        expires_at=req.expires_at,
+        expires_at=payload.expires_at,
     )
     db.add(mapping)
     db.commit()
@@ -40,7 +42,7 @@ def create_qr(req: CreateRequest, db: Session = Depends(get_db)):
     short_url = f"{BASE_URL}/r/{token}"
 
     # Warm cache
-    redirect_cache[token] = normalized_url
+    redirect_cache[token] = (normalized_url, payload.expires_at)
 
     return CreateResponse(
         token=token,
@@ -54,8 +56,12 @@ def create_qr(req: CreateRequest, db: Session = Depends(get_db)):
 def redirect(token: str, request: Request, db: Session = Depends(get_db)):
     """Redirect fallback flow: Cache -> DB -> 404/410 (from slides mermaid diagram)"""
     if token in redirect_cache:
-        _record_scan(token, request, db)
-        return RedirectResponse(redirect_cache[token], status_code=302)
+        url, expires_at = redirect_cache[token]
+        if expires_at and expires_at < datetime.utcnow():
+            del redirect_cache[token]
+        else:
+            _record_scan(token, request, db)
+            return RedirectResponse(url, status_code=302)
 
     mapping = db.query(UrlMapping).filter(UrlMapping.token == token).first()
 
@@ -68,7 +74,7 @@ def redirect(token: str, request: Request, db: Session = Depends(get_db)):
     if mapping.expires_at and mapping.expires_at < datetime.utcnow():
         raise HTTPException(status_code=410, detail="Expired")
 
-    redirect_cache[token] = mapping.original_url
+    redirect_cache[token] = (mapping.original_url, mapping.expires_at)
     _record_scan(token, request, db)
     return RedirectResponse(mapping.original_url, status_code=302)
 
@@ -144,6 +150,19 @@ def get_analytics(token: str, db: Session = Depends(get_db)):
         "total_scans": total,
         "scans_by_day": [{"date": str(row.date), "count": row.count} for row in daily],
     }
+
+
+@router.post("/admin/cache/invalidate/{token}")
+def invalidate_cache(token: str):
+    existed = redirect_cache.pop(token, None) is not None
+    return {"token": token, "invalidated": existed}
+
+
+@router.post("/admin/cache/clear")
+def clear_cache():
+    count = len(redirect_cache)
+    redirect_cache.clear()
+    return {"cleared": count}
 
 
 def _get_mapping_or_404(token: str, db: Session) -> UrlMapping:
