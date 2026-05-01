@@ -89,6 +89,23 @@ uvicorn app.main:app --reload
 | 10 | GET `/api/qr/{token}/analytics` | 200 + scan 統計 |
 
 - [ ] 全部 10 個 curl 通過
+- 
+  ⏺ ---
+  Phase 2 驗證 — 一步步執行
+
+  Step A:啟動 server(Terminal A)
+
+  cd /Users/jess/Documents/build-moat-live-sessions/qr_code_generator/scaffold
+  rm -f qr_code.db
+  source .venv/bin/activate
+  uvicorn app.main:app --reload --port 8000
+
+  ⏺ 這是 SQLAlchemy 2.0.36 跟 Python 3.14 不相容 的問題 — Mapped[bool] 用到的 Union
+  型別在 Python 3.14 裡行為改了,舊版 SQLAlchemy 還沒適配。
+  
+  修法:升級 SQLAlchemy
+  pip install 'sqlalchemy==2.0.43'
+
 
 ---
 
@@ -114,10 +131,10 @@ uvicorn app.main:app --reload
 
 ## 進度追蹤
 
-- [ ] Phase 0:環境
-- [ ] Phase 1 Step 1:`validate_url`
-- [ ] Phase 1 Step 2:`generate_token`
-- [ ] Phase 1 Step 3:`redirect`
-- [ ] Phase 2:curl 全綠
+- [V] Phase 0:環境
+- [V] Phase 1 Step 1:`validate_url`
+- [V] Phase 1 Step 2:`generate_token`
+- [V] Phase 1 Step 3:`redirect`
+- [V] Phase 2:curl 全綠
 - [ ] Phase 3:Design Questions
 - [ ] Phase 4:Bonus(選做)
