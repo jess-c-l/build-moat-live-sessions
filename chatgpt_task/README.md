@@ -46,7 +46,7 @@ This opens a browser GUI — see `PROMPT.md` Verification section for the full t
 
 ## Bonus Challenges
 
-- Connect a real LLM to parse natural language task descriptions before calling `task.create`
+- Connect a real LLM to parse natural language task descriptions before calling `task_create`
 - Add recurring job support (cron expressions)
 - Add job chaining (Job A completes -> triggers Job B)
 - Add MCP `resources` support (e.g., expose job details as readable resources)

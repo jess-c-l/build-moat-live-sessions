@@ -7,7 +7,7 @@ Build a job scheduler with an MCP (Model Context Protocol) interface:
 - A background watcher scans for due jobs and pushes them to a queue
 - Workers pull jobs from the queue and execute them
 - Support task creation, listing, status checking, and cancellation
-- Tool naming follows namespace + action verb pattern (e.g., `task.create`)
+- Tool naming follows namespace + action verb pattern (e.g., `task_create`; see Design Question 4 for why `_` not `.`)
 
 ### Architecture
 
@@ -89,7 +89,9 @@ Queue acts as a buffer that decouples production and consumption, absorbs traffi
       - 可搭配 partition pruning，大幅降低 IO
 ---
 
-4. **Tool Naming:** Why `task.create` instead of `createTask`? How does naming convention affect LLM tool selection accuracy?
+4. **Tool Naming:** Why `task_create` instead of `createTask`? How does naming convention affect LLM tool selection accuracy?
+
+> ⚠ 原本想用 `task.create`（object-first + dot 分隔），但 Anthropic API 的 tool name 必須匹配 `^[a-zA-Z0-9_-]{1,128}$`，不允許 `.`。Claude Code 載入 MCP server 時會靜默過濾掉含 `.` 的 tool（`claude mcp list` 仍顯示 ✓ Connected，但 session 看不到工具）。因此實際使用 `_` 作為 namespace 分隔。MCP inspector 比較寬鬆所以本機看得到，這也是「inspector 過、Claude Code 沒過」的常見坑。
 
 ---
 
@@ -101,7 +103,7 @@ Queue acts as a buffer that decouples production and consumption, absorbs traffi
 - namespace = implicit label grouping
 - action suffix = subcategory
 
-- 降低 token ambiguity（task.create 的結構比 createTask 更清晰、可解析）
+- 降低 token ambiguity（`task_create` 的結構比 `createTask` 更清晰、可解析）
 - 減少 tool space confusion（不同 domain 的 tool 更容易被區分）
 - 提升 prompt intent 的對齊（user intent → resource → action）
 
@@ -137,12 +139,12 @@ This opens a browser GUI (usually `http://localhost:5173`).
 
 Steps in the GUI:
 
-1. Click **Connect** -> should show 4 tools: `task.create`, `task.list`, `task.status`, `task.cancel`
-2. **task.create** -> fill `description="Summarize tech news"`, `scheduled_at="2025-01-01T00:00:00"` (past time so watcher picks it up immediately) -> **Run Tool** -> response should include `{"job_id": 1, "status": "pending", ...}`
-3. Wait ~10 seconds, then **task.status** -> `job_id: 1` -> status should now be `"completed"`
-4. **task.create** with future time `"2099-12-31T00:00:00"` -> get `job_id: 2`
-5. **task.cancel** -> `job_id: 2` -> status `"cancelled"`
-6. **task.list** -> see all your jobs
+1. Click **Connect** -> should show 4 tools: `task_create`, `task_list`, `task_status`, `task_cancel`
+2. **task_create** -> fill `description="Summarize tech news"`, `scheduled_at="2025-01-01T00:00:00"` (past time so watcher picks it up immediately) -> **Run Tool** -> response should include `{"job_id": 1, "status": "pending", ...}`
+3. Wait ~10 seconds, then **task_status** -> `job_id: 1` -> status should now be `"completed"`
+4. **task_create** with future time `"2099-12-31T00:00:00"` -> get `job_id: 2`
+5. **task_cancel** -> `job_id: 2` -> status `"cancelled"`
+6. **task_list** -> see all your jobs
 
 ### 3. (Optional) Connect to Claude Desktop / Claude Code
 
@@ -168,9 +170,9 @@ Restart Claude Desktop fully. The 🔨 icon in the chat input should show 4 tool
 
 Then chat:
 > "Schedule a task to review PR #123 tomorrow at 9am."
-> -> Claude calls `task.create` -> returns job_id
+> -> Claude calls `task_create` -> returns job_id
 > "What's the status of that task?"
-> -> Claude calls `task.status`
+> -> Claude calls `task_status`
 
 ## Suggested Tech Stack
 

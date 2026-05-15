@@ -89,7 +89,7 @@ def handle_cancel_task(db: Session, *, job_id: int) -> dict:
 
 TOOL_DEFINITIONS: list[Tool] = [
     Tool(
-        name="task.create",
+        name="task_create",
         description="Schedule a new task for future execution",
         inputSchema={
             "type": "object",
@@ -108,23 +108,23 @@ TOOL_DEFINITIONS: list[Tool] = [
         },
     ),
     Tool(
-        name="task.list",
+        name="task_list",
         description="List all scheduled tasks",
         inputSchema={"type": "object", "properties": {}},
     ),
     Tool(
-        name="task.status",
+        name="task_status",
         description="Get the status of a scheduled task by job_id",
         inputSchema={
             "type": "object",
             "properties": {
-                "job_id": {"type": "integer", "description": "The job ID returned by task.create"},
+                "job_id": {"type": "integer", "description": "The job ID returned by task_create"},
             },
             "required": ["job_id"],
         },
     ),
     Tool(
-        name="task.cancel",
+        name="task_cancel",
         description="Cancel a scheduled task that hasn't completed yet",
         inputSchema={
             "type": "object",
@@ -142,10 +142,10 @@ TOOL_DEFINITIONS: list[Tool] = [
 # ===================================================================
 
 TOOL_REGISTRY: dict = {
-    "task.create": handle_create_task,
-    "task.list": handle_list_tasks,
-    "task.status": handle_get_status,
-    "task.cancel": handle_cancel_task,
+    "task_create": handle_create_task,
+    "task_list": handle_list_tasks,
+    "task_status": handle_get_status,
+    "task_cancel": handle_cancel_task,
 }
 
 
