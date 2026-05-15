@@ -196,9 +196,9 @@ Claude 會呼叫 `task.create` 並回傳 `job_id`。
 - [x] `TOOL_REGISTRY` 含 4 個 key
 - [x] `route_tool_call()` 能正確 dispatch、未知工具回 error
 - [x] server 啟動 sanity check 通過（`python -m app.mcp_server` 正常 hang on stdin）
-- [ ] inspector 六步驟測試全部通過
-- [ ] 可成功 cancel 一個未來 job
-- [ ] `task.list` 能看到全部 job 與其最終 status
+- [x] inspector 六步驟測試全部通過
+- [x] 可成功 cancel 一個未來 job
+- [x] `task.list` 能看到全部 job 與其最終 status
 
 ---
 
