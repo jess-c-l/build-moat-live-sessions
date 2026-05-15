@@ -277,10 +277,207 @@ scheduled_at = "2099-12-31T00:00:00"。
 
 完成主線後可挑：
 - 接真 LLM 解析自然語言 task description，再呼叫 `task_create`。
-- 支援 cron 表達式做 recurring jobs。
+- 支援 cron 表達式做 recurring jobs。（→ 詳見 §七之一）
 - Job chaining：A 完成 → 自動觸發 B。
 - 加 MCP `resources` 支援（把 job 細節變成 readable resource）。
 - 加 MCP `prompts` 支援（如 `daily_review` prompt template）。
+
+---
+
+## 7-2、Recurring Jobs (Cron) 實作
+
+> 對應 `README.md` Bonus：**Add recurring job support (cron expressions)**
+
+### 目標
+
+讓 `task_create` 接一個 optional `cron` 欄位（標準 5-field cron 表達式，如 `* * * * *` 每分鐘），job 跑完後 worker 自動依 cron 算出下一次 fire time 並排入。
+
+### 設計決策
+
+1. **保留歷史 vs 原地更新**：採「每次 fire 都是 distinct `Job` row」。
+   - 理由：能完整看到每次執行的 `result`、`completed_at`；`task_status(job_id)` 語意維持不變。
+   - 代價：jobs 表會長很快 — 原型可接受。
+2. **失敗時要不要重排**：**不重排**。
+   - 理由：避免無限失敗循環；prototype 階段保守。後續可加 `max_failures` policy。
+3. **取消的語意**：對 recurring job 來說，cancel **只取消目前這一筆**未來 job — 之前已經 completed 的歷史 row 不動。要終止整條序列，使用者需在尚未 fire 的那筆上 cancel；worker 不會再排下一筆，因為被 cancel 的 job 不會進入 completed → reschedule 分支。
+4. **跨 hour bucket 的限制**：watcher 採嚴格 partition pruning（`time_bucket == current_bucket`），若 cron 算出來的 next fire time 落在**下一個小時**，該 job 必須等 watcher 進入新 bucket 才會被掃到 — 這是 OK 的（10 秒輪詢一次，最多誤差 10 秒）。⚠ 但若下一筆 fire time 跨小時且 watcher 還沒進入新 bucket 時就剛好在邊界，仍有少量誤差，原型先接受。
+
+### Step A — 加 dependency
+
+`scaffold/requirements.txt` 增加：
+
+```
+croniter>=2.0
+```
+
+然後重跑 `pip install -r requirements.txt`。
+
+### Step B — Schema 變更
+
+`scaffold/app/models.py` 的 `Job` class 增加欄位：
+
+```python
+cron: Mapped[str | None] = mapped_column(String(64), nullable=True)
+```
+
+放在 `result` 後面、`created_at` 前面即可。
+
+**Migration（原型階段）**：直接刪 `scaffold/chatgpt_task.db`，下次啟動 `Base.metadata.create_all()` 會用新 schema 重建。生產環境才需要正規 migration。
+
+### Step C — Handler 改造
+
+`scaffold/app/mcp_server.py::handle_create_task` 接 optional `cron`：
+
+```python
+def handle_create_task(
+    db: Session, *, description: str, scheduled_at: str, cron: str | None = None
+) -> dict:
+    dt = datetime.fromisoformat(scheduled_at)
+    job = Job(
+        description=description,
+        scheduled_at=dt,
+        time_bucket=get_time_bucket(dt),
+        cron=cron,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "scheduled_at": str(job.scheduled_at),
+        "cron": job.cron,
+    }
+```
+
+`handle_get_status` / `handle_list_tasks` 的回傳 dict 也順手把 `cron` 帶上，方便驗證。
+
+### Step D — Tool definition 多一個欄位
+
+`scaffold/app/mcp_server.py::TOOL_DEFINITIONS` 中 `task_create` 的 `inputSchema.properties` 加：
+
+```python
+"cron": {
+    "type": "string",
+    "description": "Optional 5-field cron expression (e.g. '* * * * *' for every minute). If set, job auto-reschedules after each completion.",
+},
+```
+
+**不要**把 `cron` 放進 `required`。
+
+### Step E — Worker 跑完自動排下一次
+
+`scaffold/app/scheduler.py::worker_loop` 改成：
+
+```python
+from croniter import croniter
+
+def worker_loop():
+    while True:
+        job_id = job_queue.get()
+        db = SessionLocal()
+        try:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job is None or job.status == "cancelled":
+                continue
+
+            job.status = "running"
+            db.commit()
+
+            job.result = f"Executed: {job.description}"
+            job.status = "completed"
+            db.commit()
+
+            # NEW: reschedule next fire if cron is set
+            if job.cron:
+                next_dt = croniter(job.cron, _utcnow()).get_next(datetime)
+                next_job = Job(
+                    description=job.description,
+                    scheduled_at=next_dt,
+                    time_bucket=get_time_bucket(next_dt),
+                    cron=job.cron,
+                )
+                db.add(next_job)
+                db.commit()
+        except Exception as e:
+            if job is not None:
+                job.status = "failed"
+                job.result = str(e)
+                db.commit()
+        finally:
+            db.close()
+            job_queue.task_done()
+```
+
+**關鍵點**：
+- `croniter(cron, base).get_next(datetime)` 回傳的是「base 之後的第一個 fire time」，所以用 `_utcnow()` 當 base 不會卡在 base 自己。
+- 重排是「在 completed 之後」才做 — 若 job 在 fire 前就被 cancel，永遠走不到這段，序列自然終止。
+- failed 的 job 不重排（見設計決策 #2）。
+
+### 完成判準
+
+- [ ] `task_create` 不帶 `cron` 時，行為與舊版完全一致（一次性 job）。
+- [ ] `task_create(description="ping", scheduled_at=<同 bucket 過去時間>, cron="* * * * *")` 建立後：
+  - 約 10 秒內第一個 row 變 `completed`；
+  - DB 出現第二個 row，`description="ping"`、`scheduled_at` 為下一分鐘、`status="pending"`、`cron="* * * * *"`；
+  - 等到下一分鐘的 watcher tick，第二個 row 也變 `completed`，並出現第三個 `pending` row。
+- [ ] 對 recurring 序列的下一筆 `pending` 做 `task_cancel` → 該筆變 `cancelled`，worker 不再排下一個（序列終止）。
+- [ ] cron 拼錯時 `task_create` 不應該爆炸 — 可接受兩種處理：在 handle_create_task 用 `croniter.is_valid(cron)` 預檢，無效就回 `{"error": "Invalid cron expression"}`；或讓它先進 DB，worker reschedule 時抓 exception → 標 failed（簡化版）。建議至少做前者，錯誤訊息回得乾淨。
+
+### 七之一·測試範例
+
+> 取當前 UTC 時間（撰寫測試時參考 `_utcnow()`）：假設 `NOW = 2026-05-15T09:35:00`，則「同 bucket 過去時間」用 `2026-05-15T09:30:00`。
+
+#### 測試 R1 — Cron recurring happy path（每分鐘）
+
+Prompt：
+
+```
+請呼叫 task_create 建立一個 recurring 任務：
+- description = "Heartbeat"
+- scheduled_at = "2026-05-15T09:30:00"   (UTC，當前小時內的過去時間)
+- cron = "* * * * *"                       (每分鐘)
+
+建好後告訴我 job_id (= N1)。
+
+第一階段：等 15 秒，呼叫 task_status(job_id=N1)，預期 status="completed"。
+
+第二階段：呼叫 task_list，找出 description="Heartbeat" 且 status="pending"
+的最新一筆，回報那筆的 job_id (= N2) 和 scheduled_at。
+預期 scheduled_at 比 N1 的 scheduled_at 大、且為下一分鐘的整點 (e.g. 09:36:00)。
+
+第三階段：等到 N2 的 scheduled_at 過了 + 15 秒，再 task_list 一次，
+應該看到 N1、N2 都是 completed，並有一筆新的 pending (N3)。
+```
+
+預期結果：
+
+| 階段 | 觀察點 | 預期值 |
+|------|--------|--------|
+| 1 | `task_status(N1)` | `status="completed"`, `result="Executed: Heartbeat"` |
+| 2 | `task_list` 找新 pending | 存在 N2，`scheduled_at` ≈ N1 fire time 後的下一個 cron tick |
+| 3 | `task_list` 再次 | N1, N2 = completed；N3 = pending |
+
+#### 測試 R2 — Cancel 序列下一筆 → 序列終止
+
+接續 R1 完成後：
+
+```
+請呼叫 task_cancel(job_id=N3)，然後等 90 秒，再 task_list。
+預期：N3 = cancelled，且沒有任何新的 pending Heartbeat row 出現
+（worker 不會替 cancelled job 排下一次）。
+```
+
+預期：N3 status=`cancelled`；series 終止；之後不再有 Heartbeat pending row。
+
+#### 測試 R3 — 無效 cron expression
+
+```
+請 task_create 帶 cron="not a cron"，scheduled_at 用 "2026-05-15T09:30:00"。
+預期回傳 {"error": "Invalid cron expression"}，不應建立任何新 row。
+```
+
+（若選擇了 §「完成判準」末項的「worker 處理」路線，這題改為：job 會建立但 worker 嘗試 reschedule 時把該筆從 completed 改 failed — 此情境下測試預期值要對應調整。）
 
 ---
 
