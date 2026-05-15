@@ -125,13 +125,15 @@ npx @modelcontextprotocol/inspector python -m app.mcp_server
 | # | 操作 | 預期結果 |
 |---|------|---------|
 | 1 | 點 **Connect** | tool list 顯示 4 個工具：`task.create` / `task.list` / `task.status` / `task.cancel` |
-| 2 | `task.create`：`description="Summarize tech news"`、`scheduled_at="2025-01-01T00:00:00"`（過去時間） | 回傳 `{"job_id": 1, "status": "pending", ...}` |
+| 2 | `task.create`：`description="Summarize tech news"`、`scheduled_at=<當前小時內的過去時間>`（見下方 ⚠） | 回傳 `{"job_id": 1, "status": "pending", ...}` |
 | 3 | 等約 10 秒後 → `task.status` 帶 `job_id=1` | status 變成 `"completed"` |
 | 4 | `task.create` 帶未來時間 `"2099-12-31T00:00:00"` | 拿到 `job_id=2` |
 | 5 | `task.cancel` 帶 `job_id=2` | status 變成 `"cancelled"` |
 | 6 | `task.list` | 看到上述所有 jobs |
 
 任何一步失敗就回頭檢查對應 TODO 是否正確。
+
+> ⚠ **與 PROMPT.md 的差異**：PROMPT.md 示範用 `scheduled_at="2025-01-01T00:00:00"`，但我們的 `find_due_jobs()` 採嚴格 partition pruning（`time_bucket == current_bucket`），歷史 bucket 的 job 不會被掃到 — 這是 partition 的設計本意。實測時要用「**當前小時內、但已過的時間**」，例如現在是 `2026-05-15 14:30`（UTC），就填 `"2026-05-15T14:00:00"`。可先用 `date -u +"%Y-%m-%dT%H:00:00"` 取當前 UTC 小時起點。
 
 ---
 
@@ -189,10 +191,20 @@ Claude 會呼叫 `task.create` 並回傳 `job_id`。
 
 ## 八、Definition of Done
 
-- [ ] `get_time_bucket()` 回傳正確的 hourly bucket 字串
-- [ ] `find_due_jobs()` 能撈到當前 bucket、到期、pending 的 jobs
+- [x] `get_time_bucket()` 回傳正確的 hourly bucket 字串
+- [x] `find_due_jobs()` 能撈到當前 bucket、到期、pending 的 jobs
 - [ ] `TOOL_REGISTRY` 含 4 個 key
 - [ ] `route_tool_call()` 能正確 dispatch、未知工具回 error
 - [ ] inspector 六步驟測試全部通過
 - [ ] 可成功 cancel 一個未來 job
 - [ ] `task.list` 能看到全部 job 與其最終 status
+
+---
+
+## 九、進度記錄
+
+| 日期 | 步驟 | 備註 |
+|------|------|------|
+| 2026-05-15 | 環境修復 | macOS 26.2 的 brew Python 3.12 `pyexpat.so` 載入失敗 → `brew install expat` + `install_name_tool` 改指 brew expat + 重新 `codesign -s -` 簽章 |
+| 2026-05-15 | Step 1 完成 | `get_time_bucket()` 用 `strftime("%Y%m%d%H")` 實作，4 個邊界 case 通過 |
+| 2026-05-15 | Step 2 完成 | `find_due_jobs()` 以 `time_bucket == current_bucket AND scheduled_at <= now AND status == "pending"` 實作，6 個 case 通過 |
