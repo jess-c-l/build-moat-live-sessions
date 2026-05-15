@@ -29,17 +29,16 @@ def find_due_jobs(current_time: datetime, db: Session) -> list[Job]:
     then filters for jobs that are due (scheduled_at <= now) and still
     in 'pending' status.
     """
-    # TODO: Implement this function
-    #
-    # Design decision: Watcher pattern — poll DB for due jobs using
-    #   the time bucket as a partition key to avoid full table scans
-    #
-    # Hints:
-    # 1. Compute the current time bucket using get_time_bucket()
-    # 2. Query Job where time_bucket matches AND scheduled_at <= current_time
-    # 3. Only include jobs with status == "pending"
-    # 4. Return the list of matching Job objects
-    return []
+    current_bucket = get_time_bucket(current_time)
+    return (
+        db.query(Job)
+        .filter(
+            Job.time_bucket == current_bucket,
+            Job.scheduled_at <= current_time,
+            Job.status == "pending",
+        )
+        .all()
+    )
 
 
 def watcher_loop(interval: int = 10):
