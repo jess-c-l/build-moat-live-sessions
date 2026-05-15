@@ -193,8 +193,9 @@ Claude 會呼叫 `task.create` 並回傳 `job_id`。
 
 - [x] `get_time_bucket()` 回傳正確的 hourly bucket 字串
 - [x] `find_due_jobs()` 能撈到當前 bucket、到期、pending 的 jobs
-- [ ] `TOOL_REGISTRY` 含 4 個 key
-- [ ] `route_tool_call()` 能正確 dispatch、未知工具回 error
+- [x] `TOOL_REGISTRY` 含 4 個 key
+- [x] `route_tool_call()` 能正確 dispatch、未知工具回 error
+- [x] server 啟動 sanity check 通過（`python -m app.mcp_server` 正常 hang on stdin）
 - [ ] inspector 六步驟測試全部通過
 - [ ] 可成功 cancel 一個未來 job
 - [ ] `task.list` 能看到全部 job 與其最終 status
@@ -208,3 +209,6 @@ Claude 會呼叫 `task.create` 並回傳 `job_id`。
 | 2026-05-15 | 環境修復 | macOS 26.2 的 brew Python 3.12 `pyexpat.so` 載入失敗 → `brew install expat` + `install_name_tool` 改指 brew expat + 重新 `codesign -s -` 簽章 |
 | 2026-05-15 | Step 1 完成 | `get_time_bucket()` 用 `strftime("%Y%m%d%H")` 實作，4 個邊界 case 通過 |
 | 2026-05-15 | Step 2 完成 | `find_due_jobs()` 以 `time_bucket == current_bucket AND scheduled_at <= now AND status == "pending"` 實作，6 個 case 通過 |
+| 2026-05-15 | Step 3 完成 | `TOOL_REGISTRY` 映射 4 個 `task.*` name → handler |
+| 2026-05-15 | Step 4 完成 | `route_tool_call()` 以 `TOOL_REGISTRY.get()` dispatch，未知工具回 error；端對端 create→status→list→cancel→unknown→missing-job 全綠 |
+| 2026-05-15 | server sanity | `python -m app.mcp_server` 啟動後正常 hang on stdin（用 fifo 保持 stdin 開啟驗證）|
