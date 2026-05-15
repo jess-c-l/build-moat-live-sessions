@@ -3,6 +3,7 @@ import threading
 import time
 from datetime import datetime
 
+from croniter import croniter
 from sqlalchemy.orm import Session
 
 from .database import SessionLocal
@@ -62,6 +63,7 @@ def worker_loop():
     while True:
         job_id = job_queue.get()
         db = SessionLocal()
+        job = None
         try:
             job = db.query(Job).filter(Job.id == job_id).first()
             if job is None or job.status == "cancelled":
@@ -74,10 +76,22 @@ def worker_loop():
             job.result = f"Executed: {job.description}"
             job.status = "completed"
             db.commit()
+
+            if job.cron:
+                next_dt = croniter(job.cron, _utcnow()).get_next(datetime)
+                next_job = Job(
+                    description=job.description,
+                    scheduled_at=next_dt,
+                    time_bucket=get_time_bucket(next_dt),
+                    cron=job.cron,
+                )
+                db.add(next_job)
+                db.commit()
         except Exception as e:
-            job.status = "failed"
-            job.result = str(e)
-            db.commit()
+            if job is not None:
+                job.status = "failed"
+                job.result = str(e)
+                db.commit()
         finally:
             db.close()
             job_queue.task_done()

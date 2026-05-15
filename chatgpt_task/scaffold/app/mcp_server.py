@@ -11,6 +11,7 @@ import asyncio
 import json
 from datetime import datetime
 
+from croniter import croniter
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
@@ -26,18 +27,33 @@ from .scheduler import get_time_bucket, start_scheduler
 # ===================================================================
 
 
-def handle_create_task(db: Session, *, description: str, scheduled_at: str) -> dict:
-    """Create a new scheduled job."""
+def handle_create_task(
+    db: Session,
+    *,
+    description: str,
+    scheduled_at: str,
+    cron: str | None = None,
+) -> dict:
+    """Create a new scheduled job (one-shot or recurring)."""
+    if cron is not None and not croniter.is_valid(cron):
+        return {"error": "Invalid cron expression"}
+
     dt = datetime.fromisoformat(scheduled_at)
     job = Job(
         description=description,
         scheduled_at=dt,
         time_bucket=get_time_bucket(dt),
+        cron=cron,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
-    return {"job_id": job.id, "status": job.status, "scheduled_at": str(job.scheduled_at)}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "scheduled_at": str(job.scheduled_at),
+        "cron": job.cron,
+    }
 
 
 def handle_get_status(db: Session, *, job_id: int) -> dict:
@@ -51,6 +67,7 @@ def handle_get_status(db: Session, *, job_id: int) -> dict:
         "status": job.status,
         "scheduled_at": str(job.scheduled_at),
         "result": job.result,
+        "cron": job.cron,
     }
 
 
@@ -64,6 +81,7 @@ def handle_list_tasks(db: Session) -> dict:
                 "description": j.description,
                 "status": j.status,
                 "scheduled_at": str(j.scheduled_at),
+                "cron": j.cron,
             }
             for j in jobs
         ]
@@ -90,7 +108,7 @@ def handle_cancel_task(db: Session, *, job_id: int) -> dict:
 TOOL_DEFINITIONS: list[Tool] = [
     Tool(
         name="task_create",
-        description="Schedule a new task for future execution",
+        description="Schedule a new task for future execution (one-shot or recurring via cron)",
         inputSchema={
             "type": "object",
             "properties": {
@@ -102,6 +120,10 @@ TOOL_DEFINITIONS: list[Tool] = [
                     "type": "string",
                     "format": "date-time",
                     "description": "When to run, ISO 8601 format (e.g. 2026-05-03T10:00:00)",
+                },
+                "cron": {
+                    "type": "string",
+                    "description": "Optional 5-field cron expression (e.g. '* * * * *' for every minute). If set, job auto-reschedules after each completion.",
                 },
             },
             "required": ["description", "scheduled_at"],

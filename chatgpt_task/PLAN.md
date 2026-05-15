@@ -424,7 +424,7 @@ def worker_loop():
 - [ ] 對 recurring 序列的下一筆 `pending` 做 `task_cancel` → 該筆變 `cancelled`，worker 不再排下一個（序列終止）。
 - [ ] cron 拼錯時 `task_create` 不應該爆炸 — 可接受兩種處理：在 handle_create_task 用 `croniter.is_valid(cron)` 預檢，無效就回 `{"error": "Invalid cron expression"}`；或讓它先進 DB，worker reschedule 時抓 exception → 標 failed（簡化版）。建議至少做前者，錯誤訊息回得乾淨。
 
-### 七之一·測試範例
+### 7-2測試範例
 
 > 取當前 UTC 時間（撰寫測試時參考 `_utcnow()`）：假設 `NOW = 2026-05-15T09:35:00`，則「同 bucket 過去時間」用 `2026-05-15T09:30:00`。
 
