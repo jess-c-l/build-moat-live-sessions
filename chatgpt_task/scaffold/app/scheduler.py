@@ -19,15 +19,7 @@ def get_time_bucket(scheduled_at: datetime) -> str:
     efficiently query only the relevant partition instead of scanning
     the entire jobs table.
     """
-    # TODO: Implement this function
-    #
-    # Design decision: Time-based partitioning for efficient job lookup
-    #
-    # Hints:
-    # 1. Format the datetime into a string that represents an hourly bucket
-    # 2. Use strftime with a format like "%Y%m%d%H" (e.g., "2025030114")
-    # 3. This bucket string becomes the partition key in the jobs table
-    return "0000000000"
+    return scheduled_at.strftime("%Y%m%d%H")
 
 
 def find_due_jobs(current_time: datetime, db: Session) -> list[Job]:
