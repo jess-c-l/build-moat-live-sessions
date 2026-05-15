@@ -22,14 +22,96 @@ User → MCP Tool Call → Job Scheduler API → DB
 Answer these before you start coding:
 
 1. **Watcher vs Cron:** Why separate the watcher from the worker? What problems does a single cron job that both scans and executes have?
+---
+We separate the watcher from the worker mainly for separation of concerns and scalability.
+  - The watcher focuses on scanning and scheduling jobs.
+  - The worker focuses on executing jobs.
+    
+  - This allows each layer to scale independently and prevents execution logic from affecting scheduling reliability. 
+    - Example:
+      A watcher may scan the database every minute. 
+      Workers handle actual email sending. 
+        
+    - Under normal traffic, 1 worker may be enough. 
+    - During a large campaign, workers can scale horizontally to handle the increased workload, while the watcher remains unchanged because scanning itself is lightweight.
+      
+---
+
+If a single cron job both scans and executes, several problems can happen:
+  - Long-running jobs may delay future scans.
+  - A crash during execution may stop scheduling.
+  - It becomes harder to scale execution independently.
+  - Multiple cron instances may accidentally execute the same task twice.
+    
+  - Also, workers become more reusable because they can be triggered not only by watchers, but also by APIs, events, retries, or manual operations.
+   
+---
+
 
 2. **Queue Layer:** Why put a queue between the watcher and worker instead of having the watcher call the worker directly? What are the benefits?
 
+---
+
+Queue acts as a buffer that decouples production and consumption, absorbs traffic spikes, and improves scalability and reliability by enabling asynchronous and fault-tolerant processing.
+
+---
+
+1. Decoupling（解耦）
+   watcher 不需要等 worker 執行完成，只負責丟 job。
+
+2. Load buffering（削峰填谷）
+   queue 吸收 spike，避免 worker 被瞬間流量壓垮。
+
+3. Scalability（水平擴展）
+   watcher 可以 scale
+   worker 可以 scale
+   彼此互不影響
+
+4. Reliability（可靠性） 
+   worker fail 時： job 還在 queue, 可以 retry / redelivery
+
+5. Async processing（非同步）
+   watcher enqueue 後立即返回，不阻塞執行.
+
+
 3. **Time Bucket Partitioning:** Instead of `SELECT * WHERE scheduled_at <= now()`, why partition jobs by time bucket (e.g., hour)? What happens to query performance at 1M+ jobs without partitioning?
+---
+   - Without partitioning, the query scans historical data and grows with total dataset size; with time partitioning, it only scans the relevant partition, reducing IO and improving cache locality.
+---
+在 1M+ jobs 情境下的差異
+  - ❌ 沒 partition：
+      - 每次 query 都在大量歷史 job 中做 range scan
+      - 隨著資料成長，query latency 逐漸變慢
+      - DB 負載持續上升（即使只有少數 ready jobs）
+  - ✅ 有 time bucket partition：
+      - query scope 被限制在「current + next bucket」
+      - historical data 不會影響 hot path
+      - 可搭配 partition pruning，大幅降低 IO
+---
 
 4. **Tool Naming:** Why `task.create` instead of `createTask`? How does naming convention affect LLM tool selection accuracy?
 
+---
+
+- Object-first naming aligns tools with resource namespaces, improving LLM intent mapping and reducing ambiguity in tool selection.
+
+---
+
+- LLM 在 tool selection 本質是「classification problem」
+- namespace = implicit label grouping
+- action suffix = subcategory
+
+- 降低 token ambiguity（task.create 的結構比 createTask 更清晰、可解析）
+- 減少 tool space confusion（不同 domain 的 tool 更容易被區分）
+- 提升 prompt intent 的對齊（user intent → resource → action）
+
+
 5. **Registry vs If-Else:** Why use a dictionary registry to route tool calls instead of if-else chains? What happens when you need to add the 20th tool?
+   - 用 registry 取代 if-else，因為它把 routing 從「逐條判斷」變成「key-based lookup」，讓查找變 O(1)，也更容易擴展。
+   - 主要差異有三點： 
+     - 可擴展性：新增 tool 不需要改 core logic
+     - 可維護性：避免 if-else 變成 decision tree
+     - 可讀性：routing 變成 declarative mapping
 
 ## Verification
 
