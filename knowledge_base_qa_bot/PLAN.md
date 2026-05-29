@@ -144,8 +144,12 @@
 
 依序執行並截圖／保留輸出：
 
-- [ ] `curl http://localhost:8000/health` → `{"status":"ok"}`
-- [ ] 未 index 前 `POST /chat` → 提示「knowledge base 尚未 index」
+- [x] `curl http://localhost:8000/health` → `{"status":"ok"}`
+- [x] 未 index 前 `POST /chat` → 提示「knowledge base 尚未 index」
+```
+  要驗證 checklist 那條「未 index 前提示」，得先清掉持久化的 index 再重啟：
+  rm /Users/jess/Documents/build-moat-live-sessions/knowledge_base_qa_bot/.kb/index.json
+```
 - [ ] `POST /index` → `{"files_indexed": 3, "sections_indexed": N}`
 - [ ] `cat .kb/index.json` 能看到結構化 sections
 - [ ] 重啟 server，未再呼叫 `/index`，可直接 `/chat`
