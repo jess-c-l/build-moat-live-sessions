@@ -135,8 +135,8 @@
 - [x] 全部組成 `CONTEXT:\n...\n\nQUESTION:\n<query>`
 
 ### Step 9. 重啟驗證持久化
-- [ ] `POST /index` 後檢查 `.kb/index.json` 是否正確生成
-- [ ] 停掉 server，再啟動後不呼叫 `/index`，直接 `/chat`，應該載入舊 index 正常作答
+- [x] `POST /index` 後檢查 `.kb/index.json` 是否正確生成
+- [x] 停掉 server，再啟動後不呼叫 `/index`，直接 `/chat`，應該載入舊 index 正常作答
 
 ---
 
@@ -168,3 +168,47 @@
 3. **Streaming Interface**（`POST /chat/stream` + SSE）：練習 FastAPI SSE 與 token-by-token 體驗
 4. **Browser UI**：搭配 stream 端點做一頁 HTML，立即可 demo
 5. 其他（Multi-Format Import、CLI／MCP、Conversation Memory、Paraphrase Comparison）視時間再評估
+
+---
+
+## 五、切換 LLM Provider（OpenAI ↔ Google Gemini）
+
+OpenAI 額度常常撞上限，已讓 `markdown_kb` 支援雙 provider，用環境變數切換，**OpenAI 仍是預設**。
+
+### 怎麼切換
+在 `scaffold/markdown_kb/.env` 設定（OpenAI 設定保留不動）：
+
+```env
+# 切換用：openai（預設）或 google
+LLM_PROVIDER=google
+
+# 申請：https://aistudio.google.com/apikey
+GOOGLE_API_KEY=你的Google金鑰
+
+# 可選：覆寫模型
+GOOGLE_MODEL=gemini-2.5-flash
+OPENAI_MODEL=gpt-4o-mini
+```
+
+- 切到 Google：`LLM_PROVIDER=google` → **重啟 server**
+- 切回 OpenAI：`LLM_PROVIDER=openai`（或刪掉這行）→ 重啟 server
+- 改 `.env` 後一定要**重啟 server**，因為 `get_llm()` 有快取 `_llm`
+
+### 程式改了哪裡
+- `app/retrieval.py`：`get_llm()` 依 `LLM_PROVIDER` 建立 `ChatGoogleGenerativeAI` 或 `ChatOpenAI`；錯誤訊息也會提示對應金鑰
+- `requirements.txt`：新增 `langchain-google-genai==2.0.8`（已裝進 `.venv`）
+
+### 踩過的坑（重要）
+1. **模型名稱會過期**：`gemini-2.0-flash` 出現 `429 limit: 0`、`gemini-1.5-flash` 出現 `404 not found` —— 都是因為這些舊模型在現行 API 已不可用。**不是額度用完，而是模型不存在/免費層為 0**。
+2. **查可用模型**（不會印出金鑰）：
+   ```bash
+   cd scaffold/markdown_kb
+   .venv/bin/python -c "
+   from dotenv import load_dotenv; load_dotenv()
+   import os, google.generativeai as genai
+   genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
+   for m in genai.list_models():
+       if 'generateContent' in m.supported_generation_methods:
+           print(m.name)"
+   ```
+3. 目前可用的 flash 系列：`gemini-flash-latest`、`gemini-2.5-flash`、`gemini-2.5-flash-lite`、`gemini-3.5-flash` 等。本專案實測 **`gemini-2.5-flash` 可正常作答**，已設為 Google 預設。

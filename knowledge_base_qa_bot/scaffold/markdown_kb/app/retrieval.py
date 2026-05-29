@@ -1,7 +1,6 @@
 import os
 
 from langchain.schema import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from . import indexer
 
@@ -20,13 +19,26 @@ _llm = None
 
 
 def get_llm():
+    """Build the chat model. Switch provider with LLM_PROVIDER=openai|google."""
     global _llm
     if _llm is None:
-        _llm = ChatOpenAI(
-            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            request_timeout=20,
-            max_retries=1,
-        )
+        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        if provider == "google":
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            _llm = ChatGoogleGenerativeAI(
+                model=os.getenv("GOOGLE_MODEL", "gemini-2.5-flash"),
+                timeout=20,
+                max_retries=1,
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+
+            _llm = ChatOpenAI(
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                request_timeout=20,
+                max_retries=1,
+            )
     return _llm
 
 
@@ -72,12 +84,17 @@ def query(question: str) -> dict:
             HumanMessage(content=build_prompt(question, ranked_sections)),
         ])
     except Exception as e:
+        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+        key_hint = (
+            "GOOGLE_API_KEY and the Google AI Studio quota"
+            if provider == "google"
+            else "OPENAI_API_KEY and the OpenAI account quota/billing"
+        )
         return {
             "answer": (
                 "Failed to generate an answer because the language model call failed: "
                 f"{type(e).__name__}: {e}. "
-                "Retrieval succeeded (see sources below); check the OPENAI_API_KEY and the "
-                "OpenAI account quota/billing."
+                f"Retrieval succeeded (see sources below); check the {key_hint}."
             ),
             "sources": sources,
         }
