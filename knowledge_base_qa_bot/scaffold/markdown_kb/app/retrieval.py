@@ -56,11 +56,6 @@ def query(question: str) -> dict:
             "sources": [],
         }
 
-    response = get_llm().invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=build_prompt(question, ranked_sections)),
-    ])
-
     sources = [
         {
             "source": section.id,
@@ -70,6 +65,22 @@ def query(question: str) -> dict:
         }
         for section, score in ranked_sections
     ]
+
+    try:
+        response = get_llm().invoke([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=build_prompt(question, ranked_sections)),
+        ])
+    except Exception as e:
+        return {
+            "answer": (
+                "Failed to generate an answer because the language model call failed: "
+                f"{type(e).__name__}: {e}. "
+                "Retrieval succeeded (see sources below); check the OPENAI_API_KEY and the "
+                "OpenAI account quota/billing."
+            ),
+            "sources": sources,
+        }
 
     return {
         "answer": response.content,
