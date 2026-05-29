@@ -120,10 +120,10 @@
 - [x] 加分項：若 token 出現於 `heading_path`，加一個小 boost（例如 `+0.5 * idf`）
 
 ### Step 7. 實作 `retrieval.SYSTEM_PROMPT`
-- [ ] 限定「只根據 CONTEXT 回答」
-- [ ] 引用格式必須是 `[Source: filename#heading]`，且只能引用 CONTEXT 內出現過的 ID
-- [ ] 缺資訊時回 `I cannot confirm from the knowledge base.`
-- [ ] 嚴禁猜測或使用外部知識
+- [x] 限定「只根據 CONTEXT 回答」
+- [x] 引用格式必須是 `[Source: filename#heading]`，且只能引用 CONTEXT 內出現過的 ID
+- [x] 缺資訊時回 `I cannot confirm from the knowledge base.`
+- [x] 嚴禁猜測或使用外部知識
 
 ### Step 8. 實作 `retrieval.build_prompt`
 - [ ] 對每個 ranked section，輸出格式：
