@@ -31,16 +31,15 @@ def get_llm():
 
 
 def build_prompt(query: str, ranked_sections: list) -> str:
-    # TODO: Build the prompt from top-ranked Markdown sections.
-    #
-    # Design decision: Put raw Markdown sections into CONTEXT with citations.
-    #
-    # Hints:
-    # 1. Include [Source: filename#heading] before each section.
-    # 2. Include heading_path so the model sees the document structure.
-    # 3. Include only top sections passed into this function.
-    # 4. Place CONTEXT before QUESTION.
-    return f"CONTEXT:\n(no context)\n\nQUESTION:\n{query}"
+    blocks = []
+    for section, _score in ranked_sections:
+        blocks.append(
+            f"[Source: {section.id}]\n"
+            f"Heading path: {' > '.join(section.heading_path)}\n"
+            f"{section.content}"
+        )
+    context = "\n\n".join(blocks) if blocks else "(no context)"
+    return f"CONTEXT:\n{context}\n\nQUESTION:\n{query}"
 
 
 def query(question: str) -> dict:

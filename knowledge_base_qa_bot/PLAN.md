@@ -126,13 +126,13 @@
 - [x] 嚴禁猜測或使用外部知識
 
 ### Step 8. 實作 `retrieval.build_prompt`
-- [ ] 對每個 ranked section，輸出格式：
+- [x] 對每個 ranked section，輸出格式：
   ```
   [Source: <section.id>]
   Heading path: <" > ".join(heading_path)>
   <section.content>
   ```
-- [ ] 全部組成 `CONTEXT:\n...\n\nQUESTION:\n<query>`
+- [x] 全部組成 `CONTEXT:\n...\n\nQUESTION:\n<query>`
 
 ### Step 9. 重啟驗證持久化
 - [ ] `POST /index` 後檢查 `.kb/index.json` 是否正確生成
