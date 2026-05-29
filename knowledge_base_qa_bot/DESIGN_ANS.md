@@ -17,17 +17,30 @@
 ```
 
 ## What is the retrieval unit in your design: file, section, or chunk?
-  1. file
-  2. 根據目前的knowledge base, 我將file傳給BM25做keyword search。
+  1. section（以 heading 切分的段落，id 格式為 filename#heading）
+  2. 流程是：每個 Markdown file 先用 HEADING_RE 依 # 標題拆成多個 section，每個 section 的 tokens（含 heading + content）才是 BM25 打分的對象。BM25 對所有 section 逐一計分、排序，取 top-k section 當作 context，引用時用
+     filename#heading 指回原文。
+  3. 為什麼選 section 而不是 file 或 chunk：
+    - 不用 file：一個檔混了多個主題（如 refund_policy 同時有 timeline、cancellation、non-refundable），整檔丟 BM25 會稀釋分數、context 雜訊大，引用也只能指到檔名、不夠精確。
+    - 不用 chunk（固定字數切）：Markdown 的 heading 本身就是天然的語意邊界，且本知識庫每個 section 都很短（最長約 200 字），再切成定長 chunk 只會破壞語意完整性、徒增複雜度。
+    - 選 section：粒度剛好——語意完整、長度適中、且 filename#heading 天生就是可驗證的引用 ID。
+
 
 ## How do you decide what goes into the prompt?
   1. 根據BM25的search結果，將top matching sections的內容放入prompt中，並且在prompt中加入使用者的query，讓LLM能夠根據這些資訊來生成答案。
 
 ## How do you cite sources so users can inspect the original Markdown?
-  1. 在回答中，我會在相關的部分引用原始Markdown文件的名稱和對應的section標題，讓使用者可以根據這些信息去查看原始文件中的內容。
+  1. 每個 section 在建索引時就被賦予 filename#heading 格式的引用 ID（如 refund_policy.md#refund-timeline），由 slugify(heading) 產生。
+  2. 組 prompt 時，每段 context 前都標上 [Source: <id>]；SYSTEM_PROMPT 強制 LLM 只能引用 CONTEXT 中字面出現過的 ID，禁止杜撰或竄改，藉此把引用綁死在實際檢索到的來源上。
+  3. API 回應除了答案內嵌的 [Source: filename#heading]，還另附 sources 陣列（含 source、heading、score、content 預覽）。
+  4. 因為引用 ID 直接對應 docs/<filename> 裡的 # heading，使用者可循 ID 翻回原始 Markdown 的那一段，驗證答案是否如實。
 
 ## What should happen when retrieval finds weak or irrelevant results?
-  1. 如果檢索到的結果與使用者的問題不相關或質量較差，應該在回答中明確指出這一點，並建議使用者重新表達問題或提供更多上下文信息以獲得更準確的答案。
+  1. 目前實作：兩道關卡。
+      - (a) 檢索層 search 只保留 BM25 score > 0 的 section，若完全無匹配則回空、query 直接回固定句 I cannot confirm from the knowledge base.，不浪費一次 LLM 呼叫。
+      - (b) 若撈到弱相關 section，SYSTEM_PROMPT 要求 LLM 在 CONTEXT 不足時同樣回那句、且不得引用，避免硬湊答案產生幻覺。
+  2. sources 與 answer 解耦：sources 是在呼叫 LLM 之前就由檢索結果組好的，所以即使答案是「找不到」，sources 仍可能列出有分數的 section——它代表「bot 檢索時看了哪些段落」，方便判斷是知識庫真的沒有、還是檢索抓錯段。
+  3. 設計取捨：寧可誠實說「找不到」，也不要用低品質 context 強行作答。
 
 ## When would you switch from Markdown KB to Vector RAG?
   - 當 knowledge base 開始出現以下情況時，我會從 Markdown index 切換到 Vector RAG：
