@@ -56,9 +56,46 @@
 - [x] 文件開頭若有非 heading 內容，略過或併入第一個 section（依設計擇一即可）
 
 ### Step 3. 實作 `indexer.rebuild_stats`
-- [ ] `files_indexed`：`{s.file for s in sections}` 的數量
-- [ ] `doc_freq`：每個 token 在多少 section 出現過（用 `set(tokens)` 避免重複計算）
-- [ ] `avg_doc_len`：所有 section `len(tokens)` 的平均
+- [x] `files_indexed`：`{s.file for s in sections}` 的數量
+- [x] `doc_freq`：每個 token 在多少 section 出現過（用 `set(tokens)` 避免重複計算）
+- [x] `avg_doc_len`：所有 section `len(tokens)` 的平均
+
+  -  files_indexed │ 給 /index API 回傳「掃了幾檔」         │ Step 5 build_index 的 return 值     
+```
+  refund_policy.md, account_help.md, shipping_faq.md
+```
+   
+  - 12 個 sections
+
+  - avg_doc_len   │ BM25 長度正規化（避免長 section 佔便宜） │ Step 6 bm25_score 分母        
+```
+    avg_doc_len = total_len / len(sections)
+    把 12 個 section 的 token 數量加起來：
+      
+    refund_policy.md :  2 + 25 + 21 + 18 = 66
+    account_help.md  :  2 + 21 + 15 + 14 = 52
+    shipping_faq.md  :  2 + 14 + 19 + 13 = 48
+                                        ----
+    total                              = 166
+    avg_doc_len = 166 / 12 ≈ 13.83
+```
+    
+  - doc_freq      │ BM25 的 IDF：愈罕見的字權重愈高          │ Step 6 idf = log((N - df + 0.5)/(df + 0.5) + 1)
+```
+    ┌────────────────────┬─────────────────────────────────────────────────────────────────────────────────┐
+    │      section       │                                shipping 出現位置                                 │
+    ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────┤
+    │ shipping-faq (H1)  │ heading "Shipping FAQ"                                                          │
+    ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────┤
+    │ standard-shipping  │ heading + content "Standard shipping usually..."                                │
+    ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────┤
+    │ expedited-shipping │ heading + content "Expedited shipping usually...", "Expedited shipping fees..." │
+    ├────────────────────┼─────────────────────────────────────────────────────────────────────────────────┤
+    │ tracking-number    │ content "...the warehouse creates the shipping label."                          │
+    └────────────────────┴─────────────────────────────────────────────────────────────────────────────────┘
+  
+    → 4 個 sections 都含 shipping，所以 doc_freq['shipping'] = 4。
+```
 
 ### Step 4. 實作 `indexer.write_index_json` / `load_index_json`
 - [ ] `write_index_json`：

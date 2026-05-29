@@ -124,13 +124,18 @@ def write_index_json(index_path: Path = INDEX_PATH) -> None:
 
 
 def rebuild_stats() -> None:
-    # TODO: Rebuild doc_freq, avg_doc_len, and files_indexed from sections.
-    #
-    # Hints:
-    # 1. files_indexed can be derived from the unique section.file values.
-    # 2. doc_freq counts how many sections contain each token.
-    # 3. avg_doc_len is the average token count across sections.
-    pass
+    global doc_freq, avg_doc_len, files_indexed
+
+    files_indexed = len({s.file for s in sections})
+
+    df: Counter[str] = Counter()
+    for s in sections:
+        for token in set(s.tokens):
+            df[token] += 1
+    doc_freq = df
+
+    total_len = sum(len(s.tokens) for s in sections)
+    avg_doc_len = total_len / len(sections) if sections else 0.0
 
 
 def load_index_json(index_path: Path = INDEX_PATH) -> tuple[int, int]:
