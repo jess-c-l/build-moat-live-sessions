@@ -114,10 +114,10 @@
 - 驗證：刪 `.kb/index.json` → `build_index()` → 回 `(3, 12)`，產出 7220 bytes index.json → 清空 in-memory → `load_index_json()` 還原 `(3, 12)`，`doc_freq['refund']=2` 重建成功
 
 ### Step 6. 實作 `indexer.bm25_score`
-- [ ] 對每個 query token 算 `tf`（在該 section tokens 中出現次數）
-- [ ] `idf = log((N - df + 0.5) / (df + 0.5) + 1)`，其中 `N = len(sections)`、`df = doc_freq[token]`
-- [ ] 分母含 `k1 * (1 - b + b * len(section.tokens) / avg_doc_len)` 做長度正規化
-- [ ] 加分項：若 token 出現於 `heading_path`，加一個小 boost（例如 `+0.5 * idf`）
+- [x] 對每個 query token 算 `tf`（在該 section tokens 中出現次數）
+- [x] `idf = log((N - df + 0.5) / (df + 0.5) + 1)`，其中 `N = len(sections)`、`df = doc_freq[token]`
+- [x] 分母含 `k1 * (1 - b + b * len(section.tokens) / avg_doc_len)` 做長度正規化
+- [x] 加分項：若 token 出現於 `heading_path`，加一個小 boost（例如 `+0.5 * idf`）
 
 ### Step 7. 實作 `retrieval.SYSTEM_PROMPT`
 - [ ] 限定「只根據 CONTEXT 回答」

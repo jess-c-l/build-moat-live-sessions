@@ -166,14 +166,28 @@ def build_index(docs_dir: Path = DOCS_DIR) -> tuple[int, int]:
 
 
 def bm25_score(query_tokens: list[str], section: Section, k1: float = 1.5, b: float = 0.75) -> float:
-    # TODO: Score one section for the query using BM25.
-    #
-    # Hints:
-    # 1. Count term frequency in the section.
-    # 2. Use doc_freq to give rare terms higher weight.
-    # 3. Normalize by section length using avg_doc_len.
-    # 4. Add a small boost when query terms appear in heading_path.
-    return 0.0
+    if not sections or not query_tokens:
+        return 0.0
+
+    N = len(sections)
+    doc_len = len(section.tokens)
+    tf_counter = Counter(section.tokens)
+    heading_tokens = set(tokenize(" ".join(section.heading_path)))
+
+    score = 0.0
+    for token in query_tokens:
+        df = doc_freq.get(token, 0)
+        if df == 0:
+            continue
+        idf = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        tf = tf_counter.get(token, 0)
+        denom = tf + k1 * (1 - b + b * doc_len / avg_doc_len) if avg_doc_len else tf + k1
+        if denom > 0:
+            score += idf * (tf * (k1 + 1)) / denom
+        if token in heading_tokens:
+            score += 0.5 * idf
+
+    return score
 
 
 def search(query: str, k: int = 3) -> list[tuple[Section, float]]:
