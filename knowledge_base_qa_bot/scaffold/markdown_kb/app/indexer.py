@@ -114,13 +114,15 @@ def parse_markdown(path: Path) -> list[Section]:
 
 
 def write_index_json(index_path: Path = INDEX_PATH) -> None:
-    # TODO: Persist the section index to .kb/index.json so it is inspectable.
-    #
-    # Hints:
-    # 1. Create index_path.parent if it does not exist.
-    # 2. Write {"sections": [...], "stats": {...}} as pretty JSON.
-    # 3. Use section.to_dict() for each Section.
-    _ = json
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "sections": [s.to_dict() for s in sections],
+        "stats": {
+            "files_indexed": files_indexed,
+            "avg_doc_len": avg_doc_len,
+        },
+    }
+    index_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def rebuild_stats() -> None:
@@ -139,14 +141,15 @@ def rebuild_stats() -> None:
 
 
 def load_index_json(index_path: Path = INDEX_PATH) -> tuple[int, int]:
-    # TODO: Load .kb/index.json into the in-memory sections list.
-    #
-    # Hints:
-    # 1. If index_path does not exist, return (0, 0).
-    # 2. Read payload["sections"] and convert each item back to Section.
-    # 3. Call rebuild_stats() after assigning sections.
-    # 4. Return (files_indexed, sections_indexed).
-    return 0, 0
+    global sections
+
+    if not index_path.exists():
+        return 0, 0
+
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    sections = [Section(**item) for item in payload["sections"]]
+    rebuild_stats()
+    return files_indexed, len(sections)
 
 
 def build_index(docs_dir: Path = DOCS_DIR) -> tuple[int, int]:

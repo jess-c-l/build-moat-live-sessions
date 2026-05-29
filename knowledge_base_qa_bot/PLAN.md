@@ -98,13 +98,13 @@
 ```
 
 ### Step 4. 實作 `indexer.write_index_json` / `load_index_json`
-- [ ] `write_index_json`：
-  - [ ] `index_path.parent.mkdir(parents=True, exist_ok=True)`
-  - [ ] 輸出 `{"sections": [section.to_dict() ...], "stats": {"files_indexed": ..., "avg_doc_len": ...}}`，用 `indent=2` 方便檢視
-- [ ] `load_index_json`：
-  - [ ] 不存在直接回 `(0, 0)`
-  - [ ] 將 JSON 中的 section 還原為 `Section` dataclass，賦值給模組級 `sections`
-  - [ ] 呼叫 `rebuild_stats()`，回傳 `(files_indexed, len(sections))`
+- [x] `write_index_json`：
+  - [x] `index_path.parent.mkdir(parents=True, exist_ok=True)`
+  - [x] 輸出 `{"sections": [section.to_dict() ...], "stats": {"files_indexed": ..., "avg_doc_len": ...}}`，用 `indent=2` 方便檢視
+- [x] `load_index_json`：
+  - [x] 不存在直接回 `(0, 0)`
+  - [x] 將 JSON 中的 section 還原為 `Section` dataclass，賦值給模組級 `sections`
+  - [x] 呼叫 `rebuild_stats()`，回傳 `(files_indexed, len(sections))`
 
 ### Step 5. 實作 `indexer.build_index`
 - [ ] 掃 `docs_dir.glob("*.md")`，對每檔呼叫 `parse_markdown`
