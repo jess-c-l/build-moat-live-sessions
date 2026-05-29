@@ -49,11 +49,11 @@
 
 
 ### Step 2. 實作 `indexer.parse_markdown`
-- [ ] 用 `HEADING_RE` 偵測 `#` 標題，切出每個 heading section
-- [ ] 維護 `heading_path`（堆疊各層 heading，從 `#` 到 `######`）
-- [ ] 每個 section 產出 `id = "<filename>#<slug(heading)>"`，例如 `refund_policy.md#refund-timeline`
-- [ ] `tokens` 同時涵蓋 heading 與 content（使用 `tokenize`）
-- [ ] 文件開頭若有非 heading 內容，略過或併入第一個 section（依設計擇一即可）
+- [x] 用 `HEADING_RE` 偵測 `#` 標題，切出每個 heading section
+- [x] 維護 `heading_path`（堆疊各層 heading，從 `#` 到 `######`）
+- [x] 每個 section 產出 `id = "<filename>#<slug(heading)>"`，例如 `refund_policy.md#refund-timeline`
+- [x] `tokens` 同時涵蓋 heading 與 content（使用 `tokenize`）
+- [x] 文件開頭若有非 heading 內容，略過或併入第一個 section（依設計擇一即可）
 
 ### Step 3. 實作 `indexer.rebuild_stats`
 - [ ] `files_indexed`：`{s.file for s in sections}` 的數量

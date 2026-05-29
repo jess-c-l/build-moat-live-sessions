@@ -70,16 +70,47 @@ def tokenize(text: str) -> list[str]:
 
 
 def parse_markdown(path: Path) -> list[Section]:
-    # TODO: Parse one Markdown file into section-level records.
-    #
-    # Design decision: The retrieval unit is a heading section, not a whole file.
-    #
-    # Hints:
-    # 1. Use HEADING_RE to detect Markdown headings.
-    # 2. Track heading_path so citations include parent context.
-    # 3. Each Section id should look like "refund_policy.md#refund-timeline".
-    # 4. Tokens should include both headings and content.
-    return []
+    file = path.name
+    text = path.read_text(encoding="utf-8")
+
+    result: list[Section] = []
+    heading_stack: list[tuple[int, str]] = []
+    current_heading: str | None = None
+    current_path: list[str] = []
+    current_content: list[str] = []
+
+    def emit(heading: str, hpath: list[str], content_lines: list[str]) -> None:
+        content = "\n".join(content_lines).strip()
+        tokens = tokenize(heading + " " + content)
+        result.append(Section(
+            id=f"{file}#{slugify(heading)}",
+            file=file,
+            heading=heading,
+            heading_path=hpath,
+            content=content,
+            tokens=tokens,
+        ))
+
+    for line in text.splitlines():
+        m = HEADING_RE.match(line)
+        if m:
+            if current_heading is not None:
+                emit(current_heading, current_path, current_content)
+            level = len(m.group(1))
+            heading = m.group(2).strip()
+            while heading_stack and heading_stack[-1][0] >= level:
+                heading_stack.pop()
+            heading_stack.append((level, heading))
+            current_heading = heading
+            current_path = [h for _, h in heading_stack]
+            current_content = []
+        elif current_heading is not None:
+            current_content.append(line)
+
+    if current_heading is not None:
+        emit(current_heading, current_path, current_content)
+
+    return result
 
 
 def write_index_json(index_path: Path = INDEX_PATH) -> None:
