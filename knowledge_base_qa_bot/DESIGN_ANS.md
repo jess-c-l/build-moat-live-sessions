@@ -3,6 +3,11 @@
   2. 
       - knowledge base是結構化資料，用Markdown進行keyword search的可實作出來。
       - 相對於Vector RAG，Markdown KB不需要embedding pipeline 和 vector database，方便實作，且容易維護。
+      - 關鍵理由：**Vector RAG 會把「檢索」也變成一個外部 API 依賴（embedding）**。
+        - `/index` 時每個 chunk 都要打 embedding API 才能建向量庫（文件越多越慢、越花錢，實測 OpenAI 還撞 `429 insufficient_quota`）。
+        - `/chat` 時連 query 都要先 embed 才能搜尋，等於每一次查詢都多綁一次外部 API 往返。
+        - index / query / 生成三步都吃 API key，任一步額度爆掉或服務掛掉整條檢索就停擺；而 Markdown KB 的 BM25 是純本地，只有最後生成答案才需要 API。
+      - 延遲觀察：實測兩者端到端時間「差不多」，因為延遲幾乎都被 LLM 生成那一步吃掉，BM25 vs FAISS 的檢索差異（毫秒級）感覺不出來。換句話說 Vector RAG 在這個規模並沒有更快（甚至因為多一次 query embedding 略慢），所以速度不是選它的理由——這反而是支持選簡單的 Markdown KB 的證據。
       - 整體流程: 
 ```
         Markdown files
