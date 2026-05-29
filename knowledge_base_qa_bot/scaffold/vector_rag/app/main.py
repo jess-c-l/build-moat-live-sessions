@@ -1,7 +1,10 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
 from .indexer import load_vector_index
 from .routes import router
+
+load_dotenv()
 
 app = FastAPI(title="Vector RAG Knowledge Base Q&A Bot")
 app.include_router(router)
