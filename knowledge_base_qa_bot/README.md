@@ -1,141 +1,97 @@
 # Knowledge Base Q&A Bot
 
-## How to Use
+針對 `docs/*.md` 知識庫的 grounded Q&A bot，提供兩種檢索策略可比較：
 
-1. Read `PROMPT.md`
-2. Review the sample Markdown docs in `docs/`
-3. Choose a learning mode:
-   - **Challenge Track:** Build from scratch using `PROMPT.md` as your spec
-   - **Guided Track:** Pick a scaffold and fill in the TODOs
-4. Choose a retrieval strategy:
-   - **Markdown KB:** Markdown section index + BM25 keyword search
-   - **Vector RAG:** Markdown chunks + embeddings + vector search
-5. Verify with the curl tests in `PROMPT.md`
-6. Bring your design tradeoffs to live session
+| 策略 | 資料夾 | 檢索方式 | 持久化索引 |
+| --- | --- | --- | --- |
+| **Markdown KB** | `scaffold/markdown_kb/` | heading section + BM25 關鍵字（純本地） | `.kb/index.json` |
+| **Vector RAG** | `scaffold/vector_rag/` | chunk + embeddings + FAISS 語意檢索 | `.kb/faiss_index/` |
 
-## Recommended Path
+共用 API：`GET /health`、`POST /index`（讀 `docs/*.md` 建索引）、`POST /chat`（grounded 作答並附 sources）。重啟後 startup 會自動載回索引，不需重建；改了 `docs/*.md` 才需重跑 `/index`。
 
-If you want the simplest guided path, start here:
+---
+
+## 環境準備
+
+兩個 scaffold 各自有獨立 venv 與 `.env`。在各自資料夾建立 `.env`：
+
+```env
+LLM_PROVIDER=google          # openai（預設）或 google
+OPENAI_API_KEY=sk-...         # 預設 provider 用
+GOOGLE_API_KEY=...            # LLM_PROVIDER=google 時用
+GOOGLE_MODEL=gemini-2.5-flash
+```
+
+- Markdown KB：**只有生成答案**需要 API key。
+- Vector RAG：**index、query、生成都需要** API key（embedding 也走 API）。
+
+---
+
+## 啟動 Markdown KB
 
 ```bash
 cd scaffold/markdown_kb
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
-Then run the verification tests from `PROMPT.md`.
-
-## Guided Track Options
-
-| Strategy | Folder | Core Idea | Best For |
-|----------|--------|-----------|----------|
-| Markdown KB | `scaffold/markdown_kb/` | Parse Markdown headings, build section-level index, rank sections with BM25 | Small knowledge bases, agent-readable docs, easy debugging |
-| Vector RAG | `scaffold/vector_rag/` | Split Markdown into chunks, embed chunks, retrieve with vector search | Larger corpora, semantic queries, traditional RAG practice |
-
-## Shared API
-
-Both strategies should expose the same API:
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Liveness check |
-| POST | `/index` | Read `docs/*.md` and build the retrieval index |
-| POST | `/chat` | Answer a question with grounded sources |
-
-After calling `/index`, each strategy persists its retrieval index:
-
-| Strategy | Persisted Index | Startup Behavior |
-|----------|-----------------|------------------|
-| Markdown KB | `.kb/index.json` | Loads the section index into memory |
-| Vector RAG | `.kb/faiss_index/` | Loads the FAISS index into memory |
-
-Restarting the server should not require rebuilding immediately. Re-run `/index` after changing `docs/*.md`.
-
-## Prerequisites
-
-Both guided tracks use OpenAI for final answer generation:
+## 啟動 Vector RAG
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+cd scaffold/vector_rag
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
-The Markdown KB track does not need embeddings. The Vector RAG track uses OpenAI embeddings.
+> 兩者都監聽 8000，請**一次只跑一個**；若要並跑，把其中一個換成 `--port 8001`。
 
-## Stretch Goals
+---
 
-Pick one or more after the core `/index` and `/chat` flow works.
+## 測試
 
-### Score Threshold and Fallback
+server 起來後依序執行（兩種策略共用同一組指令）：
 
-Add a similarity or BM25 score threshold so weak retrieval results become an explicit fallback instead of a shaky answer. Track how often the system says it cannot confirm from the knowledge base.
+```bash
+# 1. 健康檢查
+curl http://localhost:8000/health
+# -> {"status":"ok"}
 
-### Streaming Interface
+# 2. 未 index 先問 -> 應提示尚未建索引
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"query": "How long do refunds take?"}'
 
-For a better user experience, add a streaming endpoint:
+# 3. 建索引
+curl -X POST http://localhost:8000/index
+# -> {"files_indexed": 3, "sections_indexed": 12}
 
-```text
-POST /chat/stream
+# 4. 檢視持久化索引
+cat .kb/index.json              # Markdown KB
+cat .kb/faiss_index/metadata.json   # Vector RAG
+
+# 5. 重啟 server、不再 /index，直接問（驗證 startup 載入）
+# 6. grounded 問題（應正確引用來源）
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"query": "How long do refunds take?"}'        # -> refund_policy.md#refund-timeline
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"query": "Can I change my email address?"}'   # -> account_help.md#change-email-address
+
+# 7. 範圍外問題 -> 應回 cannot confirm
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -d '{"query": "Which restaurants are nearby?"}'
 ```
 
-Recommended approach:
+---
 
-- Use Server-Sent Events (SSE) for a simple one-way token stream
-- Send `source` events before token events so the UI can show what context was selected
-- Send `token` events as the LLM produces output
-- Send a final `done` event when the answer is complete
+## 測試結果總結
 
-This is intentionally a stretch goal. The core exercise is still retrieval quality and grounded answer generation.
+兩種策略都跑過完整流程（`docs/` 三檔 → `files=3, sections/chunks=12`）。完整數據見 [`TEST_RESULTS.md`](./TEST_RESULTS.md)。
 
-### Browser UI
+- **正確性**：兩者在 grounded 題都把正確 section 排第一、引用正確；範圍外題都不硬湊答案。
+- **延遲**：grounded 題端到端「差不多」（~2–3s），因為都被 LLM 生成主宰；但
+  - `/index`：Markdown `0.004s` vs Vector `1.8s`（embedding API，約 480×）。
+  - 範圍外題：Markdown `0.001s`（BM25=0 直接短路、**不呼叫 LLM**）vs Vector ~2.9s（仍要 embed query）。
+- **API 依賴**：Vector 把「檢索」也變成外部 API 依賴（index + query + 生成三處），實測有幾題檢索成功、但生成撞到 Google 免費額度 `429`；Markdown 的 API 風險只集中在最後生成一處。
 
-Build a tiny browser UI over `/chat` or `/chat/stream`. Show selected sources before the answer, then render streamed tokens as they arrive.
-
-### Multi-Format Import
-
-Karpathy-style knowledge bases often treat Markdown as the canonical knowledge format, not the only input format.
-
-Add an import pipeline:
-
-```text
-raw/*.txt or raw/*.html -> docs/*.md -> POST /index -> retrieval index
-```
-
-Recommended scope:
-
-- Start with `.txt` and `.html`
-- Preserve source filename in front matter or metadata
-- Convert headings into Markdown headings
-- Keep `docs/*.md` as the human-readable canonical copy
-- Rebuild the retrieval index after conversion
-
-Avoid parsing complex PDFs or spreadsheets first. The goal is to teach normalization into clean Markdown, not file parser edge cases.
-
-### Alternative Interfaces
-
-Keep the retrieval logic the same, but expose it through another interface:
-
-```text
-CLI: kb index / kb ask
-MCP: expose index, search, and chat as agent tools
-Web UI: simple chat screen over /chat or /chat/stream
-```
-
-This is useful for comparing interface design. The core exercise should still stay focused on indexing, retrieval, grounding, and citation quality.
-
-### Wiki Index Generation
-
-Generate `wiki/index.md` from `.kb/index.json` so humans and agents can browse the available topics without calling the API.
-
-### Answer Filing
-
-Write useful Q&A results back into `wiki/` after review. Keep filed answers source-grounded and preserve citations back to the original Markdown sections.
-
-### Conversation Memory
-
-Add short conversation memory for follow-up questions. Memory should help interpret the query, but it must not override retrieved sources or citation requirements.
-
-### Paraphrase Comparison
-
-Create a small set of paraphrased queries and compare Markdown KB vs Vector RAG. Look for cases where BM25 misses synonyms and cases where vector search retrieves semantically related but wrong chunks.
+**結論**：在這個小型、結構化知識庫，Vector RAG 速度沒有比較快、召回也沒明顯優勢，卻多了 embedding 的成本與額度風險，因此選 **Markdown KB**。Vector RAG 的價值要到文件量大、同義詞多、自然語言查詢時才會顯現。
