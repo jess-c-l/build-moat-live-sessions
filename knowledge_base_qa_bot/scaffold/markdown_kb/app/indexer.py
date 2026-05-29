@@ -153,21 +153,14 @@ def load_index_json(index_path: Path = INDEX_PATH) -> tuple[int, int]:
 
 
 def build_index(docs_dir: Path = DOCS_DIR) -> tuple[int, int]:
-    global sections, doc_freq, avg_doc_len, files_indexed
+    global sections
 
-    # TODO: Build an in-memory section index from docs/*.md.
-    #
-    # Hints:
-    # 1. Read all Markdown files from docs_dir.
-    # 2. Call parse_markdown() for each file.
-    # 3. Call rebuild_stats() to compute BM25 metadata.
-    # 4. Persist .kb/index.json with write_index_json().
-    # 5. Call write_index_json() so students can inspect the generated index.
-    # 6. Return (files_indexed, sections_indexed).
-    sections = []
-    doc_freq = Counter()
-    avg_doc_len = 0.0
-    files_indexed = 0
+    new_sections: list[Section] = []
+    for md in sorted(docs_dir.glob("*.md")):
+        new_sections.extend(parse_markdown(md))
+    sections = new_sections
+
+    rebuild_stats()
     write_index_json()
     return files_indexed, len(sections)
 

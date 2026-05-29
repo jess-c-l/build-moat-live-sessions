@@ -106,11 +106,12 @@
   - [x] 將 JSON 中的 section 還原為 `Section` dataclass，賦值給模組級 `sections`
   - [x] 呼叫 `rebuild_stats()`，回傳 `(files_indexed, len(sections))`
 
-### Step 5. 實作 `indexer.build_index`
-- [ ] 掃 `docs_dir.glob("*.md")`，對每檔呼叫 `parse_markdown`
-- [ ] 合併成全域 `sections`
-- [ ] 呼叫 `rebuild_stats()` 與 `write_index_json()`
-- [ ] 回傳 `(files_indexed, len(sections))`
+### Step 5. 實作 `indexer.build_index` ✅
+- [x] 掃 `docs_dir.glob("*.md")`，對每檔呼叫 `parse_markdown`
+- [x] 合併成全域 `sections`
+- [x] 呼叫 `rebuild_stats()` 與 `write_index_json()`
+- [x] 回傳 `(files_indexed, len(sections))`
+- 驗證：刪 `.kb/index.json` → `build_index()` → 回 `(3, 12)`，產出 7220 bytes index.json → 清空 in-memory → `load_index_json()` 還原 `(3, 12)`，`doc_freq['refund']=2` 重建成功
 
 ### Step 6. 實作 `indexer.bm25_score`
 - [ ] 對每個 query token 算 `tf`（在該 section tokens 中出現次數）
